@@ -10,10 +10,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vscode-jenkins-builder/jenkins-builder"
+    "url": "https://github.com/happiness86/vscode-jenkins-builder.git"
   },
   "bugs": {
-    "url": "https://github.com/vscode-jenkins-builder/jenkins-builder/issues"
+    "url": "https://github.com/happiness86/vscode-jenkins-builder/issues"
   },
   "keywords": [
     "jenkins",
@@ -24,7 +24,7 @@
     "Other"
   ],
   "main": "./dist/index.cjs",
-  "icon": "res/icon.svg",
+  "icon": "res/icon.png",
   "files": [
     "LICENSE.md",
     "README.md",
@@ -199,8 +199,12 @@
     "typecheck": "tsc --noEmit",
     "vscode:prepublish": "nr build",
     "release": "bumpp",
-    "ext:package": "vsce package --no-dependencies",
-    "ext:publish": "vsxpub --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "ext:package": "pnpm run package",
+    "ext:publish": "vsxpub --no-dependencies",
+    "ext:publish:marketplaces": "vsxpub --no-dependencies --exclude git",
+    "ext:publish:vscode": "vsce publish --no-dependencies",
+    "ext:publish:openvsx": "ovsx publish --no-dependencies"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^6.7.3",
