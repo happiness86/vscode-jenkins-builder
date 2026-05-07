@@ -1,33 +1,35 @@
 {
-  "publisher": "antfu",
-  "name": "ext-name",
-  "displayName": "ext-name",
-  "version": "0.0.0",
-  "private": true,
+  "publisher": "vscode-jenkins-builder",
+  "name": "jenkins-builder",
+  "displayName": "Jenkins Builder",
+  "version": "0.0.1",
+  "private": false,
   "packageManager": "pnpm@10.27.0",
-  "description": "",
-  "author": "Anthony Fu <anthonyfu117@hotmail.com>",
+  "description": "Lightweight Jenkins integration: project job, all jobs browser, trigger parameterized build from current git branch.",
+  "author": "",
   "license": "MIT",
-  "funding": "https://github.com/sponsors/antfu",
-  "homepage": "https://github.com/antfu/ext-name#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/antfu/ext-name"
+    "url": "https://github.com/vscode-jenkins-builder/jenkins-builder"
   },
   "bugs": {
-    "url": "https://github.com/antfu/ext-name/issues"
+    "url": "https://github.com/vscode-jenkins-builder/jenkins-builder/issues"
   },
-  "sponsor": {
-    "url": "https://github.com/sponsors/antfu"
-  },
+  "keywords": [
+    "jenkins",
+    "ci",
+    "build"
+  ],
   "categories": [
     "Other"
   ],
   "main": "./dist/index.cjs",
-  "icon": "res/icon.png",
+  "icon": "res/icon.svg",
   "files": [
     "LICENSE.md",
+    "README.md",
     "dist/*",
+    "docs/*",
     "res/*"
   ],
   "engines": {
@@ -37,11 +39,153 @@
     "onStartupFinished"
   ],
   "contributes": {
-    "commands": [],
+    "commands": [
+      {
+        "command": "jenkinsBuilder.signIn",
+        "title": "Jenkins Builder: Sign In"
+      },
+      {
+        "command": "jenkinsBuilder.signOut",
+        "title": "Jenkins Builder: Sign Out"
+      },
+      {
+        "command": "jenkinsBuilder.bindJob",
+        "title": "Jenkins Builder: Bind Jenkins Job…"
+      },
+      {
+        "command": "jenkinsBuilder.refreshViews",
+        "title": "Jenkins Builder: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "jenkinsBuilder.triggerCurrentBranch",
+        "title": "Jenkins Builder: Trigger Jenkins build",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "jenkinsBuilder.searchJobs",
+        "title": "Jenkins Builder: Search Jobs…"
+      },
+      {
+        "command": "jenkinsBuilder.viewBuildLog",
+        "title": "View Console Log"
+      },
+      {
+        "command": "jenkinsBuilder.stopBuild",
+        "title": "Stop Build"
+      },
+      {
+        "command": "jenkinsBuilder.openBuildInBrowser",
+        "title": "Open in Browser"
+      },
+      {
+        "command": "jenkinsBuilder.openLastStatusBuild",
+        "title": "Jenkins Builder: Open Last Triggered Build Log"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "jenkinsBuilder.refreshViews",
+          "when": "view == jenkinsBuilder.currentProject || view == jenkinsBuilder.allJobs",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jenkinsBuilder.searchJobs",
+          "when": "view == jenkinsBuilder.allJobs",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "jenkinsBuilder.triggerCurrentBranch",
+          "when": "jenkinsBuilder.signedIn && jenkinsBuilder.hasProjectJob && activeEditor",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "jenkinsBuilder.viewBuildLog",
+          "when": "(view == jenkinsBuilder.currentProject || view == jenkinsBuilder.allJobs) && viewItem =~ /jenkinsBuild/",
+          "group": "inline@1"
+        },
+        {
+          "command": "jenkinsBuilder.stopBuild",
+          "when": "(view == jenkinsBuilder.currentProject || view == jenkinsBuilder.allJobs) && viewItem =~ /jenkinsBuildRunning/",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "jenkinsBuilder",
+          "title": "Jenkins",
+          "icon": "res/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "jenkinsBuilder": [
+        {
+          "id": "jenkinsBuilder.currentProject",
+          "name": "Current Project"
+        },
+        {
+          "id": "jenkinsBuilder.allJobs",
+          "name": "All Jobs"
+        }
+      ]
+    },
     "configuration": {
-      "type": "object",
-      "title": "ext-name",
-      "properties": {}
+      "title": "Jenkins Builder",
+      "properties": {
+        "jenkinsBuilder.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Jenkins root URL (e.g. https://jenkins.example.com)"
+        },
+        "jenkinsBuilder.username": {
+          "type": "string",
+          "default": "",
+          "description": "Jenkins username"
+        },
+        "jenkinsBuilder.projectJob": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Full name of the Jenkins job for this workspace (e.g. team/folder/my-service)"
+        },
+        "jenkinsBuilder.branchParamName": {
+          "type": "string",
+          "default": "BRANCH",
+          "scope": "resource",
+          "description": "Build parameter name passed when triggering from current git branch"
+        },
+        "jenkinsBuilder.refreshIntervalSec": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "description": "Auto-refresh interval in seconds (0 disables)"
+        },
+        "jenkinsBuilder.recentBuildCount": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Number of recent builds to show under each job"
+        },
+        "jenkinsBuilder.notifyOnFinish": {
+          "type": "string",
+          "default": "always",
+          "enum": [
+            "always",
+            "failureOnly",
+            "off"
+          ],
+          "description": "Notification when a triggered build finishes"
+        }
+      }
     }
   },
   "scripts": {
@@ -51,6 +195,7 @@
     "update": "vscode-ext-gen --output src/generated/meta.ts",
     "lint": "eslint .",
     "test": "vitest",
+    "coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "vscode:prepublish": "nr build",
     "release": "bumpp",
@@ -62,6 +207,7 @@
     "@antfu/ni": "^28.0.0",
     "@types/node": "^25.0.3",
     "@types/vscode": "^1.97.0",
+    "@vitest/coverage-v8": "^4.1.5",
     "@vscode/vsce": "^3.7.1",
     "bumpp": "^10.3.2",
     "eslint": "^9.39.2",

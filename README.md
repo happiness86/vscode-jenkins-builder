@@ -1,32 +1,37 @@
-# ext-name
+# Jenkins Builder (VS Code / Cursor)
 
-<a href="https://marketplace.visualstudio.com/items?itemName=antfu.ext-name" target="__blank"><img src="https://badgen.net/vs-marketplace/v/antfu.ext-name?color=333&label=VS%20Code%20Marketplace" alt="Visual Studio Marketplace Version" /></a>
-<a href="https://kermanx.github.io/reactive-vscode/" target="__blank"><img src="https://img.shields.io/badge/made_with-reactive--vscode-%23007ACC?style=flat&labelColor=%23229863"  alt="Made with reactive-vscode" /></a>
+[Made with reactive-vscode](https://kermanx.github.io/reactive-vscode/)
 
-## Configurations
+Lightweight Jenkins integration: sign in with username + API token, bind a job to the workspace, browse all jobs with search, stream console logs, stop running builds, and trigger a parameterized build using the current Git branch.
 
-<!-- configs -->
+**Documentation**
 
-**No data**
+- [Product requirements (PRD)](./docs/PRD.md)
+- [Technical design](./docs/TECHNICAL_DESIGN.md)
 
-<!-- configs -->
+## Quick start
+
+1. Run `pnpm install` and open this folder in VS Code / Cursor.
+2. `pnpm dev` in a terminal, then **F5** → Run Extension.
+3. In the Extension Host window: **Jenkins Builder: Sign In** (Command Palette), then use the Jenkins activity bar to bind a job and trigger builds.
+
+## Packaging
+
+```bash
+pnpm run build
+pnpm run ext:package
+```
+
+Install the resulting `.vsix` via **Extensions: Install from VSIX…**.
+
+## Configuration
+
+See the generated tables below (from `package.json`) or [docs/PRD.md §5](./docs/PRD.md#5-配置项汇总).
 
 ## Commands
 
-<!-- commands -->
-
-**No data**
-
-<!-- commands -->
-
-## Sponsors
-
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/antfu/static/sponsors.svg">
-    <img src='https://cdn.jsdelivr.net/gh/antfu/static/sponsors.png'/>
-  </a>
-</p>
+See below or [docs/PRD.md §3](./docs/PRD.md#3-核心功能需求).
 
 ## License
 
-[MIT](./LICENSE.md) License © 2022 [Anthony Fu](https://github.com/antfu)
+[MIT](./LICENSE.md)
