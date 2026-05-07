@@ -37,6 +37,13 @@ jobs:
       - name: Generate .vsix file
         run: pnpm run package
 
+      # Open VS X requires a namespace matching package.json "publisher" (first publish only).
+      # If it already exists, this step exits non-zero and we ignore it.
+      - name: Ensure Open VSX namespace
+        run: npx ovsx -p "$OVSX_PAT" create-namespace vscode-jenkins-builder || true
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
       - name: Publish Extension
         run: npx vsxpub --no-dependencies
         env:
