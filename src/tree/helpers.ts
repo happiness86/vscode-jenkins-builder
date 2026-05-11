@@ -18,6 +18,25 @@ export interface JenkinsTreeNode extends TreeViewNode {
 
 const ROOT_JOB_CAP = 200
 
+/** Local wall-clock time when the build started (Jenkins `timestamp`, ms since epoch). */
+function formatTriggerTimeLabel(timestamp: number): string | undefined {
+  if (!timestamp || timestamp <= 0)
+    return undefined
+  const d = new Date(timestamp)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function formatBuildDescription(timestamp: number, durationMs: number): string | undefined {
+  const parts: string[] = []
+  const timeLabel = formatTriggerTimeLabel(timestamp)
+  if (timeLabel)
+    parts.push(timeLabel)
+  if (durationMs > 0)
+    parts.push(`${Math.round(durationMs / 1000)}s`)
+  return parts.length ? parts.join(' · ') : undefined
+}
+
 export function jobColorIcon(color?: string): ThemeIcon {
   if (!color)
     return new ThemeIcon('circle-outline')
@@ -40,7 +59,15 @@ export function buildTreeNode(jobFullName: string, b: JenkinsBuildRef): JenkinsT
     `#${b.number}  ${result}`,
     TreeItemCollapsibleState.None,
   )
-  ti.description = b.duration ? `${Math.round(b.duration / 1000)}s` : undefined
+  ti.description = formatBuildDescription(b.timestamp, b.duration)
+  const tooltipLines: string[] = []
+  const started = formatTriggerTimeLabel(b.timestamp)
+  if (started)
+    tooltipLines.push(`Started: ${new Date(b.timestamp).toLocaleString()}`)
+  if (b.duration > 0)
+    tooltipLines.push(`Duration: ${Math.round(b.duration / 1000)}s`)
+  if (tooltipLines.length)
+    ti.tooltip = tooltipLines.join('\n')
   ti.contextValue = running ? 'jenkinsBuildRunning' : 'jenkinsBuild'
   ti.iconPath = running
     ? new ThemeIcon('sync~spin')

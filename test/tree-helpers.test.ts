@@ -59,7 +59,17 @@ describe('tree/helpers', () => {
         building: true,
       })
       expect(running.treeItem.contextValue).toBe('jenkinsBuildRunning')
-      expect(running.treeItem.description).toBeUndefined()
+      expect(running.treeItem.description).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)
+
+      const noWhen = buildTreeNode('job/a', {
+        number: 9,
+        url: 'http://z',
+        result: null,
+        duration: 0,
+        timestamp: 0,
+        building: true,
+      })
+      expect(noWhen.treeItem.description).toBeUndefined()
 
       const ok = buildTreeNode('job/a', {
         number: 3,
@@ -68,7 +78,8 @@ describe('tree/helpers', () => {
         duration: 3500,
         timestamp: 1,
       })
-      expect(ok.treeItem.description).toBe('4s')
+      expect(ok.treeItem.description).toContain('4s')
+      expect(ok.treeItem.description).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)
       expect(ok.buildLabel).toBe('job/a #3')
     })
 
@@ -80,6 +91,7 @@ describe('tree/helpers', () => {
         duration: 999,
         timestamp: 0,
       })
+      expect(bad.treeItem.description).toBe('1s')
       expect(bad.treeItem.contextValue).toBe('jenkinsBuild')
       expect((bad.treeItem.iconPath as { id: string }).id).toBe('error')
 
