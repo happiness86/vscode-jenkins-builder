@@ -1,4 +1,4 @@
-import type { TreeViewNode } from 'reactive-vscode'
+import type { Awaitable, TreeViewNode } from 'reactive-vscode'
 import type { JenkinsClient } from '../jenkins/client'
 import type { JenkinsBuildRef, JenkinsJobRef } from '../jenkins/types'
 import {
@@ -9,8 +9,11 @@ import {
 } from 'vscode'
 import { isFolderJob } from '../jenkins/types'
 
-export interface JenkinsTreeNode extends TreeViewNode {
+/** Jenkins 侧栏节点始终使用同步 `TreeItem`，子节点类型递归为 `JenkinsTreeNode`。 */
+export interface JenkinsTreeNode extends Omit<TreeViewNode, 'treeItem' | 'children'> {
   id: string
+  treeItem: TreeItem
+  readonly children?: Awaitable<JenkinsTreeNode[]>
   /** Present on leaf build nodes — used by context-menu commands. */
   buildUrl?: string
   buildLabel?: string
