@@ -48,8 +48,6 @@ flowchart TB
     Config --> Context
 ```
 
-
-
 ## 2. 建议源码目录结构（落地 antfu/starter-vscode 后）
 
 路径以 `src/` 为根，与 `tsup` 单入口 `index.ts` 导出对齐（具体文件名可按脚手架微调，但职责边界如下）：
@@ -70,7 +68,6 @@ flowchart TB
 
 ## 3. 模块职责与对外接口（摘要）
 
-
 | 模块                       | 职责                                                                                        | 主要依赖                                                  | 产出的用户可感知行为            |
 | ------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------- |
 | `ConfigService`          | 合并 User/Workspace 配置；解析 `projectJob` full name                                            | `vscode.workspace`                                    | Trigger 参数名、刷新间隔、通知策略 |
@@ -83,7 +80,6 @@ flowchart TB
 | `BuildTracker`           | 完成态检测 + 去重通知；`**onBuildFinished` 先于通知刷新双 Tree**                                           | `JenkinsClient`、`notifyOnFinish`、`onBuildFinished` 回调 | 成功/失败 Toast（不阻塞侧栏终态）  |
 | `LogStreamService`       | OutputChannel 日志流                                                                         | `JenkinsClient`                                       | 查看控制台日志               |
 | `RefreshScheduler`       | 定时刷新                                                                                      | `Configuration`、Tree `fire`                           | 自动刷新                  |
-
 
 ## 4. 核心序列：Trigger 到通知（与 PRD §3.6 对齐）
 
@@ -123,17 +119,13 @@ sequenceDiagram
     K->>N: showInformation or showError
 ```
 
-
-
 ### 4.1 实现落点（`src/index.ts` 现状约定）
-
 
 | 步骤  | 行为                                                                                                                                                                                                                                                    |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A   | `pollQueueUntilExecutable` 返回后，**立刻** `await rebuildCurrentProject()` + `await rebuildAllJobs()`（PRD §3.6 问题一）。                                                                                                                                       |
 | B   | `setInterval`（约 2s）：先 `getBuildApi`；若 `building`，`await rebuildCurrentProject()`；若 **非 building**，`clearInterval`，清 `triggerBusy` / `triggerLabel`，**再** `await rebuildCurrentProject()` + `await rebuildAllJobs()`，然后 `return`（终态优先刷树，PRD §3.6 问题二）。 |
 | C   | `BuildTracker`：注册 `BuildTrackerDeps.onBuildFinished` 为双树刷新（与 B 中终态分支一致）；在 `track()` 内检测到 `building === false` 并去重后，**先 `await onBuildFinished()`，再**执行通知相关逻辑（`showInformationMessage` / `showErrorMessage`）。                                          |
-
 
 **禁止**：仅在 `refreshIntervalSec` 定时器触发后才更新 Trigger 相关构建在侧栏的展示（可作为补充，不能是唯一路径）。
 
@@ -173,7 +165,6 @@ sequenceDiagram
 
 ## 8. 与里程碑的对应关系
 
-
 | 里程碑 | 主要涉及模块                                                                  |
 | --- | ----------------------------------------------------------------------- |
 | M1  | `index.ts`、`config.ts`、`SecretStorageService`、`JenkinsClient`（`/me` 校验） |
@@ -182,5 +173,3 @@ sequenceDiagram
 | M4  | `AllJobsProvider`、folder 懒加载、搜索 QuickPick                               |
 | M5  | `LogStreamService`、`stopBuild`、`RefreshScheduler`                       |
 | M6  | `README`、图标、`vsce`/`ovsx` 脚本；无新架构模块                                     |
-
-

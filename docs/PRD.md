@@ -173,7 +173,6 @@ docker run --rm -p 8080:8080 -p 50000:50000 \
 
 ## 5. 配置项汇总
 
-
 | Key                                 | Scope         | 默认值        | 说明                               |
 | ----------------------------------- | ------------- | ---------- | -------------------------------- |
 | `jenkinsBuilder.baseUrl`            | User          | `""`       | Jenkins 根 URL                    |
@@ -184,7 +183,6 @@ docker run --rm -p 8080:8080 -p 50000:50000 \
 | `jenkinsBuilder.refreshIntervalSec` | User          | `30`       | 自动刷新间隔，0 表示关闭                    |
 | `jenkinsBuilder.recentBuildCount`   | User          | `10`       | 每个 Job 显示的最近 build 数             |
 | `jenkinsBuilder.notifyOnFinish`     | User          | `"always"` | `always` / `failureOnly` / `off` |
-
 
 ## 6. 非功能需求
 
@@ -236,4 +234,3 @@ flowchart LR
   4. 切到 All Jobs，能搜索并展开 folder，看到任意 Job 的最近 build
   5. 对运行中的 build 执行 Stop Build，build 状态在下次刷新中变为 ABORTED
   6. 拔网线 / 改错 token 时，所有报错都有明确 toast 而不是静默失败
-

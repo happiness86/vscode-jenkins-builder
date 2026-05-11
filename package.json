@@ -193,7 +193,7 @@
     "dev": "nr build --watch --sourcemap",
     "prepare": "nr update",
     "update": "vscode-ext-gen --output src/generated/meta.ts",
-    "lint": "eslint .",
+    "lint": "eslint . --fix",
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
