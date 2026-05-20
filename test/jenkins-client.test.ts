@@ -300,4 +300,67 @@ describe('jenkinsClient', () => {
     await expect(client().fetchJson('api/json?tree=x')).resolves.toEqual({ tree: 1 })
     expect(fetchMock.mock.calls[0]![0]).toBe('https://jenkins.test/api/json?tree=x')
   })
+
+  it('passes dispatcher through to fetch when configured', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}))
+    const dispatcher = { __marker: 'dispatcher' }
+    const c = new JenkinsClient({
+      baseUrl: 'https://jenkins.test',
+      username: 'u',
+      apiToken: 't',
+      dispatcher,
+    })
+    await c.validateMe()
+    const init = fetchMock.mock.calls[0]![1] as RequestInit & { dispatcher?: unknown }
+    expect(init.dispatcher).toBe(dispatcher)
+  })
+
+  it('omits dispatcher when target host is in noProxy', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}))
+    const dispatcher = { __marker: 'dispatcher' }
+    const c = new JenkinsClient({
+      baseUrl: 'https://jenkins.test',
+      username: 'u',
+      apiToken: 't',
+      dispatcher,
+      noProxy: ['jenkins.test'],
+    })
+    await c.validateMe()
+    const init = fetchMock.mock.calls[0]![1] as RequestInit & { dispatcher?: unknown }
+    expect(init.dispatcher).toBeUndefined()
+  })
+
+  it('expands fetch error cause for easier troubleshooting', async () => {
+    const err = Object.assign(new Error('fetch failed'), {
+      cause: { code: 'ECONNREFUSED', message: 'connect ECONNREFUSED 10.0.0.1:8080' },
+    })
+    fetchMock.mockRejectedValueOnce(err)
+    await expect(client().validateMe()).rejects.toThrowError(/ECONNREFUSED/)
+  })
+
+  it('respects custom timeoutMs', async () => {
+    vi.useFakeTimers()
+    try {
+      fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      })
+      const c = new JenkinsClient({
+        baseUrl: 'https://jenkins.test',
+        username: 'u',
+        apiToken: 't',
+        timeoutMs: 5_000,
+      })
+      const pending = c.validateMe()
+      const assertion = expect(pending).rejects.toBeInstanceOf(TimeoutError)
+      await vi.advanceTimersByTimeAsync(5_000)
+      await assertion
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
 })

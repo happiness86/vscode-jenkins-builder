@@ -10,6 +10,7 @@ export default defineConfig({
   dts: false,
   external: [
     'vscode',
+    'undici',
   ],
   hooks(hooks) {
     hooks.hookOnce('build:prepare', () => {

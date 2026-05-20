@@ -184,6 +184,23 @@
             "off"
           ],
           "description": "Notification when a triggered build finishes"
+        },
+        "jenkinsBuilder.proxy": {
+          "type": "string",
+          "default": "",
+          "description": "HTTP(S) proxy URL to use when calling Jenkins (e.g. http://user:pass@proxy.corp:8080). Overrides VS Code's http.proxy. Leave empty to fall back to http.proxy or HTTPS_PROXY/HTTP_PROXY environment variables. Required because the global fetch shipped with Electron 39+/Node 22 (Cursor 3.4+) no longer honors VS Code or env proxy settings automatically."
+        },
+        "jenkinsBuilder.strictSSL": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to verify TLS certificates for Jenkins requests. Follows http.proxyStrictSSL when not explicitly set. Set to false for self-signed / internal CA Jenkins instances."
+        },
+        "jenkinsBuilder.requestTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1000,
+          "maximum": 120000,
+          "description": "Per-request timeout in milliseconds. Raise to 20000-30000 on slow corporate proxy links."
         }
       }
     }

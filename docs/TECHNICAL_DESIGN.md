@@ -58,7 +58,8 @@ flowchart TB
 - `src/git.ts` — 薄封装 `extensions.getExtension('vscode.git')`：返回当前 workspace folder 的 HEAD 分支名；失败时向上抛带用户文案的错误。
 - `src/jenkins/types.ts` — `JobSummary`、`BuildInfo`、`QueueItem`、`JenkinsError` 子类（`UnauthorizedError`/`ForbiddenError`/`NotFoundError`/`TimeoutError`/`NetworkError`）。
 - `src/jenkins/url.ts` — 纯函数 `fullNameToUrlPath(fullName)`：`fullName.split('/').map(s => 'job/' + encodeURIComponent(s)).join('/')`；以及 `buildApiJson(buildUrl)`、`progressiveTextUrl(buildUrl, start)` 等纯拼接，便于 vitest 单测。
-- `src/jenkins/client.ts` — `JenkinsClient` 类：`fetchJson`、`postForm`、`buildWithParameters`、`pollQueueUntilExecutable`、`getJobBuilds(jobFullName, { limit })`（用 `tree=builds[number,result,timestamp,duration,actions[causes[userName]]]{0,N}`）、`stopBuild`、`getProgressiveText(buildUrl, start)`；所有方法统一 Basic Auth、10s 超时（`AbortController`）与 HTTP→`JenkinsError` 子类的归一化处理。**不引入 CookieJar**：API Token 视作已认证，直接跳过 CSRF Crumb（见第 7 节）。
+- `src/jenkins/proxy.ts` — 代理解析与 undici `ProxyAgent` 工厂。纯函数 `resolveProxy()` 按 `jenkinsBuilder.proxy` > `http.proxy` > `HTTPS_PROXY`/`HTTP_PROXY` 环境变量优先级合并；`parseNoProxy` / `shouldBypassProxy` 处理 `NO_PROXY`；`maskProxyUrl` 用于日志；`buildDispatcher` 通过可注入的 loader 动态加载 `undici`（运行时由 Electron 内置提供，不打包）。详见 §4.1 代理。
+- `src/jenkins/client.ts` — `JenkinsClient` 类：`fetchJson`、`postForm`、`buildWithParameters`、`pollQueueUntilExecutable`、`getJobBuilds(jobFullName, { limit })`（用 `tree=builds[number,result,timestamp,duration,actions[causes[userName]]]{0,N}`）、`stopBuild`、`getProgressiveText(buildUrl, start)`；所有方法统一 Basic Auth、可配置超时（`AbortController`，默认 10s）与 HTTP→`JenkinsError` 子类的归一化处理；可选注入 undici `dispatcher` 与 `noProxy` 列表，请求匹配 `noProxy` 后跳过 dispatcher 直连；`NetworkError` 携带 `cause.code`/`cause.message` 便于排查（`ECONNREFUSED` / `ENOTFOUND` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE` 等）。**不引入 CookieJar**：API Token 视作已认证，直接跳过 CSRF Crumb（见第 7 节）。
 - `src/views/current-project-provider.ts` — `TreeDataProvider`：根节点为「Bind…」占位或已绑定 Job；子节点为最近 N 次 build；实现 `getChildren` 懒加载与图标映射（`color` → ThemeIcon）。
 - `src/views/all-jobs-provider.ts` — `TreeDataProvider`：根 jobs 仅请求一次 `GET /api/json?tree=jobs[name,fullName,url,color,_class]`，folder 节点（`_class` 含 `Folder`）通过 `getChildren` 懒加载。**不缓存全量树**。搜索走服务端 `GET /search/suggest?query=<kw>` 拿候选 fullName，再用 QuickPick 展示；根 jobs 数量 > 200 时 TreeView 截断展示前 200 + 一条 `Use Search…` 提示节点。
 - `src/services/build-tracker.ts` — 维护 `Map<buildUrl, { notified: boolean }>`：对 Trigger 产生的 build 轮询 `GET .../build/api/json` 直到 `building === false`；**在标记已消费终态之后、`showInformationMessage` / `showErrorMessage` 之前**，`await deps.onBuildFinished?.()`，用于立即刷新 TreeView（对齐 PRD §3.6 问题二）。再按 `jenkinsBuilder.notifyOnFinish` 决定是否弹通知。
@@ -128,6 +129,20 @@ sequenceDiagram
 | C   | `BuildTracker`：注册 `BuildTrackerDeps.onBuildFinished` 为双树刷新（与 B 中终态分支一致）；在 `track()` 内检测到 `building === false` 并去重后，**先 `await onBuildFinished()`，再**执行通知相关逻辑（`showInformationMessage` / `showErrorMessage`）。                                          |
 
 **禁止**：仅在 `refreshIntervalSec` 定时器触发后才更新 Trigger 相关构建在侧栏的展示（可作为补充，不能是唯一路径）。
+
+### 4.1 代理（Electron 39+/Node 22 undici fetch 强约束）
+
+**背景**：Cursor 3.4.x 起将 Electron 升至 39.x，宿主 Node 升至 22.x。Node 22 内置的全局 `fetch`（undici 实现）**不再**自动读取 VSCode 的 `http.proxy` 设置，也**不再**读取 `HTTPS_PROXY` / `HTTP_PROXY` 环境变量。这导致旧版本里"什么都不配也能跑通"的企业代理用户在升级后统一表现为 `fetch failed`。
+
+**实现约束**：
+
+1. 任何走 `fetch` 的 Jenkins 请求都必须经由 `JenkinsClient`，由 `JenkinsClient` 在 `init.dispatcher` 上注入 undici `ProxyAgent`（来自 `src/jenkins/proxy.ts` 的 `buildDispatcher`）。
+2. 代理 URL 解析优先级（最高优先在前）：`jenkinsBuilder.proxy` > VSCode `http.proxy` > 进程环境变量 `HTTPS_PROXY` / `https_proxy` / `HTTP_PROXY` / `http_proxy`。任一为空白字符串视为未设置。
+3. `NO_PROXY` / `no_proxy` 支持精确主机、点前缀（`.example.com`）后缀匹配与 `*` 通配；命中时该请求跳过 dispatcher 直连。
+4. TLS 校验：`jenkinsBuilder.strictSSL`（boolean，可空）覆盖 `http.proxyStrictSSL`；同时作用于 `requestTls.rejectUnauthorized` 与 `proxyTls.rejectUnauthorized`（保证代理握手也按配置校验）。
+5. `undici` 在 `tsdown.config.ts` 标记为 external，运行时由 Electron 自带的 Node 22 提供，不打入 `dist/index.cjs`。
+6. 配置变更：`onDidChangeConfiguration` 监听 `jenkinsBuilder.proxy` / `strictSSL` / `requestTimeoutMs` 以及 `http.proxy` / `http.proxyStrictSSL`，命中后 `await refreshClientFromSecrets()` 重建 `JenkinsClient` 再 `refreshAll()`。
+7. 故障定位：`NetworkError` 必须把 undici 抛出的 `error.cause.code` / `error.cause.message` 透传到错误消息（如 `fetch failed (ECONNREFUSED: ...)`、`fetch failed (UNABLE_TO_VERIFY_LEAF_SIGNATURE)`），并在 `Output Channel` 中以 `logger.info` 输出当前代理 URL（凭证已 mask）与来源（`extension` / `vscode` / `env` / `none`）。
 
 ## 5. `package.json` contributes 与代码映射
 

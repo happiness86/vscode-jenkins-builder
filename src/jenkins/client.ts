@@ -3,6 +3,8 @@ import type {
   JenkinsJobRef,
 } from './types'
 import { Buffer } from 'node:buffer'
+import process from 'node:process'
+import { shouldBypassProxy } from './proxy'
 import {
   ForbiddenError,
   JenkinsError,
@@ -17,6 +19,14 @@ export interface JenkinsClientOptions {
   baseUrl: string
   username: string
   apiToken: string
+  /** undici Dispatcher，用于在 Electron 39+/Node 22 全局 fetch 上注入代理（见 src/jenkins/proxy.ts） */
+  dispatcher?: unknown
+  /** 单次请求超时毫秒，默认 10s；代理慢链路建议放宽到 20-30s */
+  timeoutMs?: number
+  /** NO_PROXY 主机列表，匹配的请求会跳过 dispatcher 直连 */
+  noProxy?: string[]
+  /** 是否校验 TLS 证书；false 时同时设置 NODE_TLS_REJECT_UNAUTHORIZED 作为 dispatcher 方案的兜底 */
+  strictSSL?: boolean
 }
 
 export interface QueueItemJson {
@@ -37,11 +47,19 @@ const JSON_ACCEPT = 'application/json'
 export class JenkinsClient {
   private readonly base: string
   private readonly authHeader: string
+  private readonly dispatcher: unknown | undefined
+  private readonly timeoutMs: number
+  private readonly noProxy: string[]
+  private readonly strictSSL: boolean
 
   constructor(opts: JenkinsClientOptions) {
     this.base = normalizeBaseUrl(opts.baseUrl)
     const raw = `${opts.username}:${opts.apiToken}`
     this.authHeader = `Basic ${Buffer.from(raw, 'utf8').toString('base64')}`
+    this.dispatcher = opts.dispatcher
+    this.timeoutMs = opts.timeoutMs ?? 10_000
+    this.noProxy = opts.noProxy ?? []
+    this.strictSSL = opts.strictSSL ?? true
   }
 
   private mapStatus(status: number, fallbackMsg: string): JenkinsError {
@@ -60,24 +78,45 @@ export class JenkinsClient {
       : `${this.base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
 
     const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 10_000)
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs)
+    const useDispatcher = this.dispatcher && !shouldBypassProxy(url, this.noProxy)
+    const fetchInit: RequestInit = {
+      ...init,
+      signal: ctrl.signal,
+      headers: {
+        Authorization: this.authHeader,
+        ...init.headers,
+      },
+    }
+    if (useDispatcher) {
+      ;(fetchInit as Record<string, unknown>).dispatcher = this.dispatcher
+    }
+
+    // 当 strictSSL=false 时，用 NODE_TLS_REJECT_UNAUTHORIZED 兜底。
+    // dispatcher 方案在 Electron 39 的扩展宿主中可能不生效
+    // （require('undici') 静默失败 或 全局 fetch 忽略 dispatcher 选项），
+    // 此时 env var 是确保 TLS 校验被跳过的最后手段。
+    const tlsFallback = !this.strictSSL
+    const prevTlsEnv = process.env.NODE_TLS_REJECT_UNAUTHORIZED
+    if (tlsFallback)
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+
     try {
-      return await fetch(url, {
-        ...init,
-        signal: ctrl.signal,
-        headers: {
-          Authorization: this.authHeader,
-          ...init.headers,
-        },
-      })
+      return await fetch(url, fetchInit)
     }
     catch (e: any) {
       if (e?.name === 'AbortError')
         throw new TimeoutError()
-      throw new NetworkError(e?.message ?? 'fetch failed')
+      throw new NetworkError(describeFetchError(e))
     }
     finally {
       clearTimeout(timer)
+      if (tlsFallback) {
+        if (prevTlsEnv !== undefined)
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTlsEnv
+        else
+          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
+      }
     }
   }
 
@@ -251,4 +290,24 @@ export class JenkinsClient {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms))
+}
+
+/**
+ * 把底层 fetch 错误展开成对排查有用的字符串。
+ * undici 的 `fetch failed` 真实原因常在 `cause` 上（如 ENOTFOUND/ECONNREFUSED/UNABLE_TO_VERIFY_LEAF_SIGNATURE）。
+ */
+function describeFetchError(e: any): string {
+  const top = typeof e?.message === 'string' ? e.message : 'fetch failed'
+  const cause = e?.cause
+  if (!cause)
+    return top
+  const code = typeof cause.code === 'string' ? cause.code : undefined
+  const msg = typeof cause.message === 'string' ? cause.message : undefined
+  if (code && msg)
+    return `${top} (${code}: ${msg})`
+  if (code)
+    return `${top} (${code})`
+  if (msg)
+    return `${top} (${msg})`
+  return top
 }

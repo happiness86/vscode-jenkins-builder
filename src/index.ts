@@ -25,6 +25,7 @@ import {
 import { SECRET_API_TOKEN_KEY } from './constants'
 import { getCurrentGitBranch } from './git-branch'
 import { JenkinsClient } from './jenkins/client'
+import { buildDispatcher, maskProxyUrl, resolveProxy } from './jenkins/proxy'
 import {
   JenkinsError,
   UnauthorizedError,
@@ -70,7 +71,32 @@ export const { activate, deactivate } = defineExtension((context: ExtensionConte
     const token = await context.secrets.get(SECRET_API_TOKEN_KEY)
     if (!baseUrl || !username || !token)
       return null
-    return new JenkinsClient({ baseUrl, username, apiToken: token })
+
+    const httpCfg = workspace.getConfiguration('http')
+    const resolution = resolveProxy({
+      extensionProxy: cfg.get<string>('proxy', '').trim() || undefined,
+      vscodeProxy: httpCfg.get<string>('proxy', '').trim() || undefined,
+      vscodeStrictSSL: httpCfg.get<boolean>('proxyStrictSSL', true),
+      extensionStrictSSL: readOptionalBoolean(cfg, 'strictSSL'),
+    })
+    const dispatcher = buildDispatcher(resolution)
+    const timeoutMs = clampTimeout(cfg.get<number>('requestTimeoutMs', 10_000))
+
+    logger.info(
+      `Jenkins client: baseUrl=${baseUrl} proxy=${maskProxyUrl(resolution.proxyUrl)} `
+      + `source=${resolution.source} strictSSL=${resolution.strictSSL} timeoutMs=${timeoutMs} `
+      + `dispatcher=${dispatcher ? 'ok' : 'NONE(undici unavailable)'}`,
+    )
+
+    return new JenkinsClient({
+      baseUrl,
+      username,
+      apiToken: token,
+      dispatcher,
+      timeoutMs,
+      noProxy: resolution.noProxy,
+      strictSSL: resolution.strictSSL,
+    })
   }
 
   function openBuildLog(buildUrl: string, label: string) {
@@ -254,6 +280,18 @@ export const { activate, deactivate } = defineExtension((context: ExtensionConte
     workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('jenkinsBuilder.refreshIntervalSec'))
         restartRefreshTimer()
+      // 代理/超时/strictSSL 或 VSCode http.* 变更须重建 client；
+      // 其他 jenkinsBuilder.* 变更只需刷新视图与上下文。
+      const needRebuild
+        = e.affectsConfiguration('jenkinsBuilder.proxy')
+          || e.affectsConfiguration('jenkinsBuilder.strictSSL')
+          || e.affectsConfiguration('jenkinsBuilder.requestTimeoutMs')
+          || e.affectsConfiguration('http.proxy')
+          || e.affectsConfiguration('http.proxyStrictSSL')
+      if (needRebuild) {
+        void refreshClientFromSecrets().then(() => refreshAll())
+        return
+      }
       if (e.affectsConfiguration('jenkinsBuilder'))
         void refreshProjectJobContext().then(() => refreshAll())
     }),
@@ -487,6 +525,20 @@ export const { activate, deactivate } = defineExtension((context: ExtensionConte
     },
   })
 })
+
+function readOptionalBoolean(cfg: ReturnType<typeof workspace.getConfiguration>, key: string): boolean | undefined {
+  const insp = cfg.inspect<boolean>(key)
+  if (!insp)
+    return undefined
+  return insp.workspaceFolderValue ?? insp.workspaceValue ?? insp.globalValue ?? undefined
+}
+
+function clampTimeout(v: number | undefined): number {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0)
+    return 10_000
+  // 防御一下离谱的输入（最小 1s，最大 120s）
+  return Math.min(Math.max(Math.floor(v), 1_000), 120_000)
+}
 
 async function pickJobFullName(c: JenkinsClient): Promise<string | undefined> {
   return new Promise((resolve) => {

@@ -183,12 +183,16 @@ docker run --rm -p 8080:8080 -p 50000:50000 \
 | `jenkinsBuilder.refreshIntervalSec` | User          | `30`       | 自动刷新间隔，0 表示关闭                    |
 | `jenkinsBuilder.recentBuildCount`   | User          | `10`       | 每个 Job 显示的最近 build 数             |
 | `jenkinsBuilder.notifyOnFinish`     | User          | `"always"` | `always` / `failureOnly` / `off` |
+| `jenkinsBuilder.proxy`              | User          | `""`       | HTTP(S) 代理 URL；为空时回落到 `http.proxy` 与 `HTTPS_PROXY`/`HTTP_PROXY` 环境变量。Cursor 3.4+/Electron 39+ 起内置 `fetch` 不再自动读取这些来源，企业代理用户须显式配置（见 TECH §4.1） |
+| `jenkinsBuilder.strictSSL`          | User          | `null`     | 是否校验 TLS 证书；默认沿用 `http.proxyStrictSSL`；自签 / 内部 CA 的 Jenkins 可显式置 `false` |
+| `jenkinsBuilder.requestTimeoutMs`   | User          | `10000`    | 单次请求超时（毫秒），慢链路 / 代理放宽到 20000–30000 |
 
 ## 6. 非功能需求
 
-- 所有 HTTP 请求复用一个 `JenkinsClient`（基于 `undici` 或 `node:fetch`），统一加 Basic Auth、超时（10s）、错误归一化
+- 所有 HTTP 请求复用一个 `JenkinsClient`（宿主全局 `fetch` + 必要时注入 undici `ProxyAgent`），统一加 Basic Auth、可配置超时、错误归一化
 - 401 响应统一触发"清空内存中 token + 弹出登录引导"
 - 不允许把 token 写入任何 setting / 日志
+- 代理与 TLS：扩展须显式注入 undici `dispatcher`（Cursor 3.4+/Electron 39+ 起，全局 `fetch` 不再自动读 VSCode/系统代理）；优先级 `jenkinsBuilder.proxy` > `http.proxy` > `HTTPS_PROXY`/`HTTP_PROXY` 环境变量；`NO_PROXY` 支持后缀匹配；`strictSSL` 沿用 `http.proxyStrictSSL` 或扩展级覆盖。详见 TECH §4.1。
 - 国际化：MVP 仅支持英文 UI（`l10n` 预留接入点）
 - 错误对用户友好：网络错误、参数化构建缺参数都要给出明确提示（实现细节见技术文档中的认证与错误模型）
 
